@@ -46,6 +46,16 @@ scrapfly-crawler https://example.com \
 
 Note: URLs without a protocol will automatically be prefixed with 'https://'
 
+### JavaScript Rendering Options
+
+The crawler provides three ways to control JavaScript rendering:
+
+1. Use neither flag: Uses the default from configuration (RENDER_JS environment variable)
+2. Use `--render-js`: Explicitly enables JavaScript rendering
+3. Use `--no-render-js`: Explicitly disables JavaScript rendering
+
+This three-state design allows you to use the default configuration for normal usage while providing explicit overrides when needed.
+
 ### Python API
 
 ```python
