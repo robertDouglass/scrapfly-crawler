@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Dict, Set, Optional
 from .models import LinkMetadata, CrawlStatus
-from .utils import get_domain
+from .utils import get_domain, strip_url_fragment, normalize_query_params
 
 class LinkTracker:
     def __init__(self, base_url: str):
@@ -13,18 +13,23 @@ class LinkTracker:
         
     def add_link(self, url: str) -> bool:
         """Add a new link to track. Returns True if link was added, False if it already exists."""
-        if url in self.links:
+        # Normalize query parameters and strip fragment
+        clean_url = normalize_query_params(url)
+        clean_url = strip_url_fragment(clean_url)
+        if clean_url in self.links:
             return False
             
-        self.links[url] = LinkMetadata(url=url)
-        self.status[url] = CrawlStatus.PENDING
-        self.discovered_at[url] = datetime.now()
+        self.links[clean_url] = LinkMetadata(url=clean_url)
+        self.status[clean_url] = CrawlStatus.PENDING
+        self.discovered_at[clean_url] = datetime.now()
         return True
         
     def update_from_result(self, result, url: str, scrape_params: Dict = None) -> None:
         """Update link metadata from a scrape result"""
-        if url not in self.links:
-            self.add_link(url)
+        clean_url = normalize_query_params(url)
+        clean_url = strip_url_fragment(clean_url)
+        if clean_url not in self.links:
+            self.add_link(clean_url)
             
         metadata = self.links[url]
         metadata.status_code = result.response.status_code
@@ -44,10 +49,12 @@ class LinkTracker:
         
     def update_status(self, url: str, status: CrawlStatus, error: Optional[str] = None) -> None:
         """Update the status of a link"""
-        if url in self.links:
-            self.status[url] = status
+        clean_url = normalize_query_params(url)
+        clean_url = strip_url_fragment(clean_url)
+        if clean_url in self.links:
+            self.status[clean_url] = status
             if error:
-                self.links[url].error = error
+                self.links[clean_url].error = error
                 
     def get_pending_links(self) -> Set[str]:
         """Get all links that haven't been crawled yet"""

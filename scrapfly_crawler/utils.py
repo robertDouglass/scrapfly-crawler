@@ -1,4 +1,4 @@
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urlparse, urljoin, urldefrag, parse_qs, urlencode, urlunparse
 from typing import Set
 
 def is_resource_url(url: str) -> bool:
@@ -26,20 +26,66 @@ def is_resource_url(url: str) -> bool:
         return True
     # Check URL patterns
     skip_patterns = [
-        '/assets/', '/static/', '/media/',
+        '/assets/', '/_assets/', '/static/', '/media/',
         '/dist/', '/build/', '/vendor/',
         'fonts.googleapis.com',
         'ajax.googleapis.com'
     ]
     return any(pattern in url for pattern in skip_patterns)
+def normalize_query_params(url: str) -> str:
+    """Normalize URL by removing or standardizing certain query parameters"""
+    # Parameters that should be removed as they don't affect content
+    skip_params = {
+        # Analytics
+        'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+        # Cache busters
+        'timestamp', 'ts', 't', 'rand', 'random',
+        # Common tracking params
+        'fbclid', 'gclid', 'msclkid',
+        # Session/click IDs that don't affect content
+        '_hsenc', '_hsmi', 'mc_cid', 'mc_eid',
+    }
+    
+    parsed = urlparse(url)
+    if not parsed.query:
+        return url
+        
+    # Parse query parameters
+    params = parse_qs(parsed.query, keep_blank_values=True)
+    
+    # Remove skipped parameters
+    filtered_params = {k: v for k, v in params.items() if k.lower() not in skip_params}
+    
+    # Reconstruct URL with filtered parameters
+    new_query = urlencode(filtered_params, doseq=True) if filtered_params else ''
+    return urlunparse((
+        parsed.scheme,
+        parsed.netloc,
+        parsed.path,
+        parsed.params,
+        new_query,
+        ''  # Remove fragment as it's handled separately
+    ))
+
+def strip_url_fragment(url: str) -> str:
+    """Remove fragment/anchor from URL"""
+    return urldefrag(url)[0]
+
 
 def normalize_url(base_url: str, link: str) -> str:
     """Convert relative URL to absolute URL"""
     return urljoin(base_url, link)
+def normalize_domain(domain: str) -> str:
+    """Normalize domain by handling www subdomain consistently"""
+    if domain.startswith('www.'):
+        return domain[4:]  # Strip www.
+    return domain
 
 def get_domain(url: str) -> str:
-    """Extract domain from URL"""
-    return urlparse(url).netloc
+    """Extract and normalize domain from URL"""
+    domain = urlparse(url).netloc
+    return normalize_domain(domain)
+
 
 def filter_links(base_url: str, links: Set[str]) -> Set[str]:
     """Filter and normalize a set of links"""
@@ -52,10 +98,18 @@ def filter_links(base_url: str, links: Set[str]) -> Set[str]:
             
         # Convert relative to absolute URL
         absolute_url = normalize_url(base_url, link)
-        parsed_link = urlparse(absolute_url)
+        # Normalize query parameters and strip fragment
+        clean_url = normalize_query_params(absolute_url)
+        clean_url = strip_url_fragment(clean_url)
+        parsed_link = urlparse(clean_url)
         
         # Skip resource URLs and only keep links from the same domain
-        if not is_resource_url(absolute_url) and parsed_link.netloc == domain:
-            normalized_links.add(absolute_url)
+        link_domain = normalize_domain(parsed_link.netloc)
+        base_domain = normalize_domain(domain)
+        if not is_resource_url(clean_url) and link_domain == base_domain:
+            # Ensure we use https if available
+            parsed = urlparse(clean_url)
+            normalized_url = urlunparse(('https', parsed.netloc, parsed.path, parsed.params, parsed.query, ''))
+            normalized_links.add(normalized_url)
             
     return normalized_links

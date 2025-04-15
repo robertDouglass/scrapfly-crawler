@@ -9,6 +9,7 @@ from scrapfly import ScrapflyClient
 from .tracker import LinkTracker
 from .rate_limiter import RateLimiter
 from .scraper import scrape_url
+from .utils import normalize_domain, urlparse, urlunparse
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +29,15 @@ class Crawler:
         Returns:
             Path object pointing to the output file
         """
+        # Normalize the start URL to use https and handle www
+        parsed = urlparse(start_url)
+        normalized_domain = normalize_domain(parsed.netloc)
+        if not normalized_domain.startswith('www.'):
+            normalized_domain = 'www.' + normalized_domain
+        normalized_url = urlunparse(('https', normalized_domain, parsed.path, parsed.params, parsed.query, ''))
+        
         # Initialize components
-        tracker = LinkTracker(start_url)
+        tracker = LinkTracker(normalized_url)
         rate_limiter = RateLimiter(initial_concurrency=self.concurrent_requests)
         
         # Setup output directory
@@ -45,10 +53,10 @@ class Crawler:
         
         # Open output file and start crawling
         with open(output_file, 'w', encoding='utf-8') as f:
-            # First scrape the initial URL
-            result_data = await scrape_url(self.client, start_url, tracker, rate_limiter)
+            # First scrape the normalized initial URL
+            result_data = await scrape_url(self.client, normalized_url, tracker, rate_limiter)
             if result_data:
-                logger.debug(f"Writing data for URL: {start_url}")
+                logger.debug(f"Writing data for URL: {normalized_url}")
                 f.write(json.dumps(result_data) + '\n')
             
             # Process pending links with dynamic concurrency

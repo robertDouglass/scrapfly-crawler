@@ -110,7 +110,7 @@ async def scrape_url(client: ScrapflyClient, url: str, tracker: LinkTracker, rat
             "metadata": {
                 "status_code": metadata.status_code,
                 "content_type": metadata.content_type,
-                "crawled_at": metadata.crawled_at.isoformat(),
+                "crawled_at": metadata.crawled_at.isoformat() if metadata.crawled_at else None,
                 "proxy_country": metadata.proxy_country,
                 "render_js": metadata.render_js,
                 "timing": metadata.timing,
