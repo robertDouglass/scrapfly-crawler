@@ -41,8 +41,10 @@ scrapfly-crawler https://example.com \
     --max-retries 3 \      # Maximum retry attempts
     --base-delay 5 \       # Base delay between retries (seconds)
     --render-js \          # Enable JavaScript rendering
-    --no-render-js         # Disable JavaScript rendering
+    --no-render-js \       # Disable JavaScript rendering (default)
 ```
+
+Note: URLs without a protocol will automatically be prefixed with 'https://'
 
 ### Python API
 
@@ -70,10 +72,11 @@ asyncio.run(main())
 - `CONCURRENT_REQUESTS`: Initial number of concurrent requests (default: 1)
 - `MIN_CONCURRENCY`: Minimum number of concurrent requests during auto-adjustment (default: 1)
 - `MAX_CONCURRENCY`: Maximum number of concurrent requests during auto-adjustment (default: same as CONCURRENT_REQUESTS)
-- `INITIAL_CONCURRENCY`: Internal variable set to CONCURRENT_REQUESTS value, used as starting point for auto-adjustment
 - `MAX_RETRIES`: Maximum number of retry attempts for failed requests (default: 3)
-- `BASE_DELAY`: Base delay between retries in seconds (default: 5)
+- `BASE_DELAY`: Base delay between retries in seconds (default: 10)
 - `RENDER_JS`: Enable/disable JavaScript rendering (default: false)
+
+Note: The `INITIAL_CONCURRENCY` variable is set internally based on the `CONCURRENT_REQUESTS` value and should not be set manually.
 
 ### Metadata Tracking
 
@@ -165,14 +168,15 @@ The crawler implements sophisticated error handling:
 ## Development
 
 1. Clone the repository
-2. Install development dependencies:
+2. Install dependencies:
    ```bash
-   pip install -e ".[dev]"
+   pip install -e .
    ```
-3. Run tests:
-   ```bash
-   pytest
-   ```
+
+Note: The package requires Python 3.7 or later and has the following main dependencies:
+- scrapfly-sdk>=0.8.5
+- python-dotenv>=0.19.0
+- aiohttp>=3.8.0
 
 ### Version Control
 

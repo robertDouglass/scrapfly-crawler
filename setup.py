@@ -6,12 +6,12 @@ with open("README.md", "r", encoding="utf-8") as fh:
 setup(
     name="scrapfly-crawler",
     version="0.1.0",
-    author="Your Name",
-    author_email="your.email@example.com",
-    description="A web crawler using the Scrapfly API",
+    author="Scrapfly",
+    author_email="support@scrapfly.io",
+    description="A robust web crawler implementation using the Scrapfly API",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/scrapfly-crawler",
+    url="https://github.com/robertDouglass/scrapfly-crawler",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 3 - Alpha",
