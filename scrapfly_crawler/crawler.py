@@ -29,12 +29,17 @@ class Crawler:
         Returns:
             Path object pointing to the output file
         """
-        # Normalize the start URL to use https and handle www
-        parsed = urlparse(start_url)
-        normalized_domain = normalize_domain(parsed.netloc)
-        if not normalized_domain.startswith('www.'):
-            normalized_domain = 'www.' + normalized_domain
-        normalized_url = urlunparse(('https', normalized_domain, parsed.path, parsed.params, parsed.query, ''))
+        # For problematic domains like those with Namecheap URL forwarding,
+        # ensure we try HTTP version first, which often works better with redirects
+        if not start_url.startswith(('http://', 'https://')):
+            # If no scheme specified, start with HTTP
+            parsed = urlparse(f"http://{start_url}")
+            normalized_url = urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, parsed.query, ''))
+            logger.info(f"No scheme specified, starting with HTTP: {normalized_url}")
+        else:
+            # Preserve the scheme but ensure it's normalized
+            parsed = urlparse(start_url)
+            normalized_url = urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, parsed.query, ''))
         
         # Initialize components
         tracker = LinkTracker(normalized_url)

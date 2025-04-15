@@ -21,6 +21,9 @@ class LinkMetadata:
     render_js: Optional[bool] = None
     timing: Optional[Dict] = None
     scrape_params: Dict = None
+    final_url: Optional[str] = None  # URL after following redirects
+    redirect_chain: Optional[list] = None  # List of URLs in redirect chain
+    is_redirected: bool = False  # Flag indicating if URL was redirected
 
     def __post_init__(self):
         if self.scrape_params is None:
@@ -32,6 +35,7 @@ class LinkMetadata:
                 "render_js": render_js,  # Default is False unless overridden by env var
                 "asp": True,
                 "debug": True,
+                "method": "GET",  # Use GET method to handle redirects naturally
                 "headers": {
                     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",

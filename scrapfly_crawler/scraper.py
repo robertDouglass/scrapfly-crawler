@@ -15,6 +15,7 @@ async def scrape_with_retry(client: ScrapflyClient, url: str, scrape_params: Dic
     """Scrape a URL with retry logic for network and server errors only."""
     max_retries = max_retries or int(os.getenv('MAX_RETRIES', 3))
     base_delay = base_delay or int(os.getenv('BASE_DELAY', 10))
+    timeout = int(os.getenv('SCRAPE_TIMEOUT', 30))  # Default 30 seconds timeout
     last_error = None
 
     for attempt in range(max_retries):
@@ -25,10 +26,63 @@ async def scrape_with_retry(client: ScrapflyClient, url: str, scrape_params: Dic
                 logger.debug(f"Waiting {delay:.2f}s before retry {attempt + 1}")
                 await asyncio.sleep(delay)
 
-            result = await client.async_scrape(ScrapeConfig(
-                url=url,
-                **scrape_params
-            ))
+            # Try the original URL
+            try:
+                logger.debug(f"Attempting to scrape URL: {url}")
+                result = await asyncio.wait_for(
+                    client.async_scrape(ScrapeConfig(
+                        url=url,
+                        **scrape_params
+                    )),
+                    timeout=timeout
+                )
+            except asyncio.TimeoutError:
+                logger.warning(f"Scrape timed out after {timeout}s for {url}")
+                
+                # For HTTPS URLs that time out, try fallback to HTTP version
+                if url.startswith('https://') and attempt == 0:
+                    http_url = url.replace('https://', 'http://', 1)
+                    logger.debug(f"Trying HTTP fallback for timed out HTTPS URL: {http_url}")
+                    try:
+                        result = await asyncio.wait_for(
+                            client.async_scrape(ScrapeConfig(
+                                url=http_url,
+                                **scrape_params
+                            )),
+                            timeout=timeout
+                        )
+                        logger.info(f"HTTP fallback successful for {url}")
+                    except asyncio.TimeoutError:
+                        logger.warning(f"HTTP fallback also timed out for {http_url}")
+                        if attempt < max_retries - 1:
+                            continue
+                        raise asyncio.TimeoutError(f"Both HTTPS and HTTP attempts timed out for {url}")
+                else:
+                    # Regular timeout handling for non-HTTPS URLs or after first attempt
+                    if attempt < max_retries - 1:
+                        continue
+                    raise asyncio.TimeoutError(f"Scrape timed out after {timeout}s for {url} (max retries exceeded)")
+                
+            # Handle 301 redirects explicitly (for services like Namecheap URL forwarding)
+            if result.response.status_code == 301:
+                location = result.response.headers.get('location')
+                if location:
+                    logger.debug(f"Got 301 redirect from {url} to {location}, following manually")
+                    try:
+                        # Create a new scrape config for the redirect target
+                        redirect_result = await asyncio.wait_for(
+                            client.async_scrape(ScrapeConfig(
+                                url=location,
+                                **scrape_params
+                            )),
+                            timeout=timeout
+                        )
+                        return redirect_result
+                    except asyncio.TimeoutError:
+                        logger.warning(f"Redirect scrape timed out after {timeout}s for {location}")
+                        if attempt < max_retries - 1:
+                            continue
+                        raise asyncio.TimeoutError(f"Redirect scrape timed out after {timeout}s for {location} (max retries exceeded)")
 
             # Check if response indicates a server error (5xx)
             if 500 <= result.response.status_code < 600:
@@ -37,7 +91,7 @@ async def scrape_with_retry(client: ScrapflyClient, url: str, scrape_params: Dic
                     continue
                 logger.error(f"Server error {result.response.status_code} persisted after all retries for {url}")
                 return result
-
+            
             # For rate limits, respect retry-after header
             if result.response.status_code == 429:
                 if attempt < max_retries - 1:
@@ -78,8 +132,26 @@ async def scrape_url(client: ScrapflyClient, url: str, tracker: LinkTracker, rat
         await rate_limiter.wait_if_needed()
         metadata = tracker.links.get(url, LinkMetadata(url=url))
         
+        # Set default scrape parameters with explicit redirect handling
+        scrape_params = {
+            'asp': True,      # Enable anti-scraping protection
+            'method': 'GET',  # Use GET method to handle redirects
+            'render_js': metadata.render_js if metadata.render_js is not None else True,  # Enable JS rendering
+            'headers': {
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive',
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            },
+            **metadata.scrape_params  # Include any existing params
+        }
+        
+        # Remove allow_redirects as it's not a valid parameter
+        if 'allow_redirects' in scrape_params:
+            scrape_params.pop('allow_redirects')
+        
         # Scrape with retry only for network/server errors
-        result = await scrape_with_retry(client, url, metadata.scrape_params)
+        result = await scrape_with_retry(client, url, scrape_params)
         
         # Update rate limiter based on response
         rate_limiter.update_concurrency(
@@ -104,8 +176,15 @@ async def scrape_url(client: ScrapflyClient, url: str, tracker: LinkTracker, rat
         # Update tracker with result
         tracker.update_from_result(result, url, metadata.scrape_params)
         
+        # Track redirect chain if present
+        redirect_chain = []
+        if result.response.history:
+            redirect_chain = [r.url for r in result.response.history]
+            logger.debug(f"Followed redirect chain: {' -> '.join(redirect_chain)}")
+
         data = {
             "url": url,
+            "final_url": result.response.url,  # The URL after following redirects
             "html": result.content,
             "metadata": {
                 "status_code": metadata.status_code,
@@ -114,7 +193,9 @@ async def scrape_url(client: ScrapflyClient, url: str, tracker: LinkTracker, rat
                 "proxy_country": metadata.proxy_country,
                 "render_js": metadata.render_js,
                 "timing": metadata.timing,
-                "scrape_params": metadata.scrape_params
+                "scrape_params": metadata.scrape_params,
+                "redirect_chain": redirect_chain,
+                "is_redirected": bool(redirect_chain)
             }
         }
 

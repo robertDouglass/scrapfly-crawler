@@ -76,10 +76,8 @@ def normalize_url(base_url: str, link: str) -> str:
     """Convert relative URL to absolute URL"""
     return urljoin(base_url, link)
 def normalize_domain(domain: str) -> str:
-    """Normalize domain by handling www subdomain consistently"""
-    if domain.startswith('www.'):
-        return domain[4:]  # Strip www.
-    return domain
+    """Extract base domain without normalization"""
+    return domain.lower()  # Just lowercase for consistency
 
 def get_domain(url: str) -> str:
     """Extract and normalize domain from URL"""
@@ -107,9 +105,7 @@ def filter_links(base_url: str, links: Set[str]) -> Set[str]:
         link_domain = normalize_domain(parsed_link.netloc)
         base_domain = normalize_domain(domain)
         if not is_resource_url(clean_url) and link_domain == base_domain:
-            # Ensure we use https if available
-            parsed = urlparse(clean_url)
-            normalized_url = urlunparse(('https', parsed.netloc, parsed.path, parsed.params, parsed.query, ''))
-            normalized_links.add(normalized_url)
+            # Keep original scheme
+            normalized_links.add(clean_url)
             
     return normalized_links

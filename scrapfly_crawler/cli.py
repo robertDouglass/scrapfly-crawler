@@ -18,7 +18,9 @@ def setup_logging():
 def validate_url(url: str) -> str:
     """Validate and normalize the input URL"""
     if not url.startswith(('http://', 'https://')):
-        url = 'https://' + url
+        # For unknown URLs, start with HTTP which works better with redirects
+        url = 'http://' + url
+        logging.info(f"No protocol specified, using HTTP for initial request: {url}")
     try:
         result = urlparse(url)
         if not all([result.scheme, result.netloc]):

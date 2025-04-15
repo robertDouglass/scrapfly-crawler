@@ -4,6 +4,10 @@ A robust web crawler implementation using the Scrapfly API for handling JavaScri
 
 ## Features
 
+- Intelligent URL and redirect handling
+  - Automatic following of 301/302 redirects
+  - Smart handling of www/non-www domains
+  - Protocol (http/https) preservation unless redirected
 - Automatic JavaScript rendering with configurable rendering options
 - Smart rate limiting and concurrency control
   - Auto-adjusting concurrency based on response codes
@@ -44,7 +48,14 @@ scrapfly-crawler https://example.com \
     --no-render-js \       # Disable JavaScript rendering (default)
 ```
 
-Note: URLs without a protocol will automatically be prefixed with 'https://'
+### URL and Redirect Handling
+
+The crawler implements smart URL and redirect handling:
+
+- Follows 301/302 redirects automatically
+- Preserves original URL schemes (http/https) unless redirected
+- Handles www and non-www domains through redirects
+- Defaults to http:// for URLs without a protocol
 
 ### JavaScript Rendering Options
 

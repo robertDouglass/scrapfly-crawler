@@ -31,17 +31,34 @@ class LinkTracker:
         if clean_url not in self.links:
             self.add_link(clean_url)
             
-        metadata = self.links[url]
+        metadata = self.links[clean_url]
         metadata.status_code = result.response.status_code
         metadata.content_type = result.response.headers.get("content-type")
         metadata.crawled_at = datetime.now()
+        
+        # Track redirect information
+        if result.response.history:
+            metadata.is_redirected = True
+            metadata.redirect_chain = [r.url for r in result.response.history]
+            metadata.final_url = result.response.url
+        else:
+            metadata.is_redirected = False
+            metadata.redirect_chain = []
+            metadata.final_url = clean_url
         
         if scrape_params:
             metadata.scrape_params = scrape_params
             metadata.render_js = scrape_params.get("render_js", False)
             
-        self.links[url] = metadata
-        self.status[url] = CrawlStatus.COMPLETED
+        self.links[clean_url] = metadata
+        self.status[clean_url] = CrawlStatus.COMPLETED
+        
+        # If URL was redirected, add the final URL to tracking if it's on the same domain
+        if metadata.is_redirected and get_domain(metadata.final_url) == self.domain:
+            final_clean_url = normalize_query_params(metadata.final_url)
+            final_clean_url = strip_url_fragment(final_clean_url)
+            if final_clean_url not in self.links:
+                self.add_link(final_clean_url)
 
     def get_all_links(self) -> Set[str]:
         """Get all tracked links regardless of status"""
