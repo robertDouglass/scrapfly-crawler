@@ -24,8 +24,15 @@ A robust web crawler implementation using the Scrapfly API for handling JavaScri
 
 ## Installation
 
+1. Create and activate a virtual environment:
 ```bash
-pip install scrapfly-crawler
+python3 -m venv venv
+source venv/bin/activate  # On Windows use: venv\Scripts\activate
+```
+
+2. Install in development mode:
+```bash
+pip install -e .
 ```
 
 ## Usage
@@ -36,11 +43,14 @@ pip install scrapfly-crawler
 # Set your Scrapfly API key in .env file or environment
 export SCRAPFLY_API_KEY='your-api-key'
 
-# Basic usage
+# Basic usage (as module)
+python -m scrapfly_crawler.cli https://example.com
+
+# Alternative usage (if console script is in PATH)
 scrapfly-crawler https://example.com
 
 # Advanced usage with all options
-scrapfly-crawler https://example.com \
+python -m scrapfly_crawler.cli https://example.com \
     --concurrent 2 \        # Number of concurrent requests
     --max-retries 3 \      # Maximum retry attempts
     --base-delay 5 \       # Base delay between retries (seconds)

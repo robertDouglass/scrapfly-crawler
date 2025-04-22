@@ -31,6 +31,7 @@ setup(
         "scrapfly-sdk>=0.8.5",
         "python-dotenv>=0.19.0",
         "aiohttp>=3.8.0",
+        "parsel>=1.8.1",
     ],
     entry_points={
         "console_scripts": [
