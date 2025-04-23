@@ -4,6 +4,8 @@ from typing import Dict, Optional
 from dataclasses import dataclass
 from datetime import datetime
 
+__all__ = ['CrawlStatus', 'LinkMetadata']
+
 class CrawlStatus(Enum):
     PENDING = "pending"
     IN_PROGRESS = "in_progress"

@@ -6,7 +6,7 @@ from typing import Dict, Optional
 from scrapfly import ScrapflyClient, ScrapeConfig
 from .tracker import LinkTracker
 from .rate_limiter import RateLimiter
-from .utils import filter_links
+from .utils import filter_links, should_exclude_url
 from .models import LinkMetadata, CrawlStatus
 
 logger = logging.getLogger(__name__)
@@ -56,12 +56,14 @@ async def scrape_with_retry(client: ScrapflyClient, url: str, scrape_params: Dic
                         logger.warning(f"HTTP fallback also timed out for {http_url}")
                         if attempt < max_retries - 1:
                             continue
-                        raise asyncio.TimeoutError(f"Both HTTPS and HTTP attempts timed out for {url}")
+                        logger.error(f"Both HTTPS and HTTP attempts timed out for {url}")
+                        return None
                 else:
                     # Regular timeout handling for non-HTTPS URLs or after first attempt
                     if attempt < max_retries - 1:
                         continue
-                    raise asyncio.TimeoutError(f"Scrape timed out after {timeout}s for {url} (max retries exceeded)")
+                    logger.error(f"Scrape timed out after {timeout}s for {url} (max retries exceeded)")
+                    return None
                 
             # Handle 301 redirects explicitly (for services like Namecheap URL forwarding)
             if result.response.status_code == 301:
@@ -82,7 +84,8 @@ async def scrape_with_retry(client: ScrapflyClient, url: str, scrape_params: Dic
                         logger.warning(f"Redirect scrape timed out after {timeout}s for {location}")
                         if attempt < max_retries - 1:
                             continue
-                        raise asyncio.TimeoutError(f"Redirect scrape timed out after {timeout}s for {location} (max retries exceeded)")
+                        logger.error(f"Redirect scrape timed out after {timeout}s for {location} (max retries exceeded)")
+                        return None
 
             # Check if response indicates a server error (5xx)
             if 500 <= result.response.status_code < 600:
@@ -113,15 +116,24 @@ async def scrape_with_retry(client: ScrapflyClient, url: str, scrape_params: Dic
                 logger.warning(f"Network error on attempt {attempt + 1} for {url}: {str(e)}. Will retry.")
                 continue
             logger.error(f"Network error persisted after all retries for {url}: {str(e)}")
-            raise last_error
+            return None
         except Exception as e:
             # Don't retry other exceptions
             logger.error(f"Non-retryable error for {url}: {str(e)}")
-            raise e
+            return None
+
+    # If we reach here, all retries failed
+    return None
 
 async def scrape_url(client: ScrapflyClient, url: str, tracker: LinkTracker, rate_limiter: RateLimiter) -> Optional[Dict]:
     """Scrape a single URL and return the result data"""
     logger.debug(f"Starting to scrape URL: {url}")
+    
+    # Check if URL should be excluded based on patterns
+    if should_exclude_url(url, tracker.exclude_patterns):
+        logger.debug(f"Skipping excluded URL: {url}")
+        tracker.update_status(url, CrawlStatus.FAILED, "URL matches exclude pattern")
+        return None
     
     # Skip binary content URLs
     if any(ext in url.lower() for ext in ['.jpg', '.jpeg', '.png', '.gif', '.mp4', '.mp3', '.pdf', '.zip']):
@@ -152,6 +164,12 @@ async def scrape_url(client: ScrapflyClient, url: str, tracker: LinkTracker, rat
         
         # Scrape with retry only for network/server errors
         result = await scrape_with_retry(client, url, scrape_params)
+        
+        # Check if result is None (could happen if all retries failed)
+        if result is None:
+            logger.error(f"Failed to get a valid result for {url} after all retries")
+            tracker.update_status(url, CrawlStatus.FAILED, "Failed to get a valid result after all retries")
+            return None
         
         # Update rate limiter based on response
         rate_limiter.update_concurrency(
@@ -200,14 +218,17 @@ async def scrape_url(client: ScrapflyClient, url: str, tracker: LinkTracker, rat
         }
 
         # Extract and process links
-        all_links = result.selector.css("a::attr(href)").getall()
-        logger.debug(f"Found {len(all_links)} raw links on page {url}")
-        
-        # Filter and add new links to tracker
-        filtered_links = filter_links(tracker.base_url, all_links)
-        for link in filtered_links:
-            if tracker.add_link(link):
-                logger.debug(f"Added new link to track: {link}")
+        try:
+            all_links = result.selector.css("a::attr(href)").getall()
+            logger.debug(f"Found {len(all_links)} raw links on page {url}")
+            
+            # Filter and add new links to tracker
+            filtered_links = filter_links(tracker.base_url, all_links, exclude_patterns=tracker.exclude_patterns)
+            for link in filtered_links:
+                if tracker.add_link(link):
+                    logger.debug(f"Added new link to track: {link}")
+        except Exception as e:
+            logger.warning(f"Failed to extract links from {url}: {str(e)}")
                 
         logger.debug(f"Prepared data for storage: {data['url']}, status: {data['metadata']['status_code']}")
         return data

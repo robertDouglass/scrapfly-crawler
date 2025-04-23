@@ -8,6 +8,10 @@ A robust web crawler implementation using the Scrapfly API for handling JavaScri
   - Automatic following of 301/302 redirects
   - Smart handling of www/non-www domains
   - Protocol (http/https) preservation unless redirected
+- URL filtering and exclusion
+  - Exclude URLs that match specific patterns
+  - Pattern exclusion works during discovery and before processing
+  - Exclusion patterns persist in state files for resumed crawls
 - Automatic JavaScript rendering with configurable rendering options
 - Smart rate limiting and concurrency control
   - Auto-adjusting concurrency based on response codes
@@ -54,6 +58,9 @@ python -m scrapfly_crawler.cli https://example.com
 # Resume an interrupted crawl
 python -m scrapfly_crawler.cli https://example.com --resume
 
+# Exclude specific URL patterns
+python -m scrapfly_crawler.cli https://example.com --exclude-patterns "/and/" "/or/"
+
 # Alternative usage (if console script is in PATH)
 scrapfly-crawler https://example.com
 
@@ -65,6 +72,29 @@ python -m scrapfly_crawler.cli https://example.com \
     --render-js \          # Enable JavaScript rendering
     --no-render-js \       # Disable JavaScript rendering (default)
     --resume \             # Resume from previous state
+    --exclude-patterns "/and/" "/path/to/exclude/" # Exclude URL patterns
+```
+
+### URL Pattern Exclusion
+
+The crawler supports excluding URLs based on patterns:
+
+- Specify one or more patterns with `--exclude-patterns` (or `-e`)
+- Any URL containing the specified patterns in its path will be excluded
+- Exclusion happens at multiple stages:
+  - When loading a state file (for resuming crawls)
+  - When discovering new links
+  - Before processing any URL
+- Exclude patterns are saved in the state file
+- When resuming a crawl:
+  - Command-line exclude patterns take precedence
+  - If no patterns are specified, patterns from the state file are used
+- Statistics about excluded URLs are tracked and displayed
+
+Example usage:
+```bash
+# Exclude URLs containing "/and/" or "/category/" in their paths
+python -m scrapfly_crawler.cli https://example.com --exclude-patterns "/and/" "/category/"
 ```
 
 ### URL and Redirect Handling
@@ -103,9 +133,24 @@ async def main():
     output_file, state_file = await crawler.crawl('https://example.com')
     print(f"Crawl completed. Output saved to: {output_file}")
     
-    # Or resume interrupted crawl
+    # Start new crawl with exclude patterns
+    output_file, state_file = await crawler.crawl(
+        'https://example.com',
+        exclude_patterns=['/and/', '/category/']
+    )
+    print(f"Crawl completed. Output saved to: {output_file}")
+    
+    # Resume interrupted crawl
     output_file, state_file = await crawler.crawl('https://example.com', resume=True)
     print(f"Crawl resumed and completed. Output saved to: {output_file}")
+    
+    # Resume interrupted crawl with exclude patterns
+    output_file, state_file = await crawler.crawl(
+        'https://example.com',
+        resume=True,
+        exclude_patterns=['/and/', '/category/']
+    )
+    print(f"Crawl resumed with exclude patterns. Output saved to: {output_file}")
 
 # Run the crawler
 asyncio.run(main())
@@ -204,6 +249,8 @@ The crawler generates two types of files:
 {
     "base_url": "https://example.com",
     "domain": "example.com",
+    "exclude_patterns": ["/and/", "/category/"],
+    "excluded_count": 42,
     "links": {
         "https://example.com/page1": {
             "url": "https://example.com/page1",

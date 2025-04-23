@@ -4,7 +4,11 @@ import logging
 import asyncio
 import argparse
 from pathlib import Path
+from dotenv import load_dotenv
 from .crawler import Crawler
+
+# Load environment variables
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -17,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 def get_api_key() -> str:
     """Get Scrapfly API key from environment variable"""
-    api_key = os.getenv('SCRAPFLY_KEY')
+    api_key = os.getenv('SCRAPFLY_API_KEY')
     if not api_key:
         logger.error("SCRAPFLY_KEY environment variable not set")
         sys.exit(1)
@@ -29,6 +33,7 @@ async def main() -> None:
     parser.add_argument('--output-dir', '-o', help='Directory to save output files', default='output')
     parser.add_argument('--concurrent', '-c', type=int, help='Number of concurrent requests', default=1)
     parser.add_argument('--resume', '-r', action='store_true', help='Resume from previous crawl state')
+    parser.add_argument('--exclude-patterns', '-e', nargs='+', help='URL patterns to exclude from crawling (e.g., "/and/" "/or/")', default=[])
     
     args = parser.parse_args()
     
@@ -43,7 +48,8 @@ async def main() -> None:
         output_file, state_file = await crawler.crawl(
             start_url=args.url,
             output_dir=args.output_dir,
-            resume=args.resume
+            resume=args.resume,
+            exclude_patterns=args.exclude_patterns
         )
         logger.info(f"Crawl completed successfully")
         

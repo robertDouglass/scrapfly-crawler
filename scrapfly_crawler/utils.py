@@ -1,5 +1,5 @@
 from urllib.parse import urlparse, urljoin, urldefrag, parse_qs, urlencode, urlunparse
-from typing import Set
+from typing import Set, List, Optional
 
 def is_resource_url(url: str) -> bool:
     """Check if URL is a resource that should be skipped"""
@@ -32,6 +32,21 @@ def is_resource_url(url: str) -> bool:
         'ajax.googleapis.com'
     ]
     return any(pattern in url for pattern in skip_patterns)
+
+def should_exclude_url(url: str, exclude_patterns: Optional[List[str]] = None) -> bool:
+    """Check if URL should be excluded based on custom exclude patterns"""
+    if not exclude_patterns:
+        return False
+        
+    parsed = urlparse(url)
+    
+    # Check if any exclude pattern exists in the URL path
+    for pattern in exclude_patterns:
+        if pattern in parsed.path:
+            return True
+            
+    return False
+    
 def normalize_query_params(url: str) -> str:
     """Normalize URL by removing or standardizing certain query parameters"""
     # Parameters that should be removed as they don't affect content
@@ -85,7 +100,7 @@ def get_domain(url: str) -> str:
     return normalize_domain(domain)
 
 
-def filter_links(base_url: str, links: Set[str]) -> Set[str]:
+def filter_links(base_url: str, links: Set[str], exclude_patterns: Optional[List[str]] = None) -> Set[str]:
     """Filter and normalize a set of links"""
     domain = get_domain(base_url)
     normalized_links = set()
@@ -100,6 +115,10 @@ def filter_links(base_url: str, links: Set[str]) -> Set[str]:
         clean_url = normalize_query_params(absolute_url)
         clean_url = strip_url_fragment(clean_url)
         parsed_link = urlparse(clean_url)
+        
+        # Skip URLs matching exclude patterns
+        if should_exclude_url(clean_url, exclude_patterns):
+            continue
         
         # Skip resource URLs and only keep links from the same domain
         link_domain = normalize_domain(parsed_link.netloc)
