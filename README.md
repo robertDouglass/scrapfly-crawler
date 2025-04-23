@@ -21,6 +21,11 @@ A robust web crawler implementation using the Scrapfly API for handling JavaScri
   - Automatic retries with exponential backoff
   - Smart handling of binary content (images, videos, etc.)
   - Different retry strategies for different status codes
+- Resume interrupted crawls
+  - Automatic state persistence
+  - Resume from last known position
+  - Handles interruptions gracefully
+  - Maintains crawl progress across sessions
 
 ## Installation
 
@@ -46,6 +51,9 @@ export SCRAPFLY_API_KEY='your-api-key'
 # Basic usage (as module)
 python -m scrapfly_crawler.cli https://example.com
 
+# Resume an interrupted crawl
+python -m scrapfly_crawler.cli https://example.com --resume
+
 # Alternative usage (if console script is in PATH)
 scrapfly-crawler https://example.com
 
@@ -56,6 +64,7 @@ python -m scrapfly_crawler.cli https://example.com \
     --base-delay 5 \       # Base delay between retries (seconds)
     --render-js \          # Enable JavaScript rendering
     --no-render-js \       # Disable JavaScript rendering (default)
+    --resume \             # Resume from previous state
 ```
 
 ### URL and Redirect Handling
@@ -90,9 +99,13 @@ async def main():
         concurrent_requests=1
     )
     
-    # Start crawling
-    output_file = await crawler.crawl('https://example.com')
+    # Start new crawl
+    output_file, state_file = await crawler.crawl('https://example.com')
     print(f"Crawl completed. Output saved to: {output_file}")
+    
+    # Or resume interrupted crawl
+    output_file, state_file = await crawler.crawl('https://example.com', resume=True)
+    print(f"Crawl resumed and completed. Output saved to: {output_file}")
 
 # Run the crawler
 asyncio.run(main())
@@ -152,8 +165,9 @@ The crawler features smart concurrency adjustment:
 
 ## Output Format
 
-The crawler saves results in JSONL format with each line containing:
+The crawler generates two types of files:
 
+1. JSONL output file containing scraped data:
 ```json
 {
     "url": "https://example.com",
@@ -185,6 +199,33 @@ The crawler saves results in JSONL format with each line containing:
 }
 ```
 
+2. State file (.state.json) for resuming interrupted crawls:
+```json
+{
+    "base_url": "https://example.com",
+    "domain": "example.com",
+    "links": {
+        "https://example.com/page1": {
+            "url": "https://example.com/page1",
+            "status_code": 200,
+            "content_type": "text/html",
+            "crawled_at": "2025-04-14T12:30:00",
+            ...
+        },
+        ...
+    },
+    "status": {
+        "https://example.com/page1": "completed",
+        "https://example.com/page2": "pending",
+        ...
+    },
+    "discovered_at": {
+        "https://example.com/page1": "2025-04-14T12:30:00",
+        ...
+    }
+}
+```
+
 ## Error Handling
 
 The crawler implements sophisticated error handling:
@@ -195,6 +236,18 @@ The crawler implements sophisticated error handling:
 - Rate limit (429) responses respect the server's retry-after header
 - Each URL has configurable max retries and base delay between retries
 - Exponential backoff increases delay between retries: base_delay * (2 ^ attempt)
+- Interruptions are handled gracefully with state persistence
+
+### Resuming Interrupted Crawls
+
+The crawler supports resuming interrupted crawls:
+
+1. State is automatically saved after each URL update
+2. When interrupted (Ctrl+C, error, etc.), state is preserved
+3. Use `--resume` flag to continue from last known position
+4. Most recent state file for domain is automatically detected
+5. New results are appended to existing output file
+6. Progress is maintained across sessions
 
 ## Development
 
@@ -217,7 +270,7 @@ The following files and directories are excluded from version control:
 - Virtual environments (`.venv/`, `env/`, `venv/`)
 - Environment files (`.env`)
 - IDE configuration files (`.idea/`, `.vscode/`)
-- Project output files (`output/`, `*.jsonl`)
+- Project output files (`output/`, `*.jsonl`, `*.state.json`)
 
 ## License
 
